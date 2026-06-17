@@ -69,7 +69,10 @@ func LoadResults() error {
 	}
 	defer file.Close()
 
-	sections := splitSections(file)
+	sections, err := splitSections(file)
+	if err != nil {
+		return err
+	}
 	if len(sections) < 1 {
 		return fmt.Errorf("results file: expected at least 1 section")
 	}
@@ -108,7 +111,67 @@ func LoadResults() error {
 	return nil
 }
 
-func splitSections(file *os.File) [][]string {
+// SaveResults writes the current results to ~/.wcup/results.
+func SaveResults() error {
+	path, err := resultsPath()
+	if err != nil {
+		return err
+	}
+
+	content := formatResultsFile(
+		MatchResults,
+		RoundOf32,
+		RoundOf16,
+		RoundOf8,
+		RoundOf4,
+		RoundOf2,
+		Podium,
+	)
+
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func formatResultsFile(
+	matchResults []MatchResult,
+	roundOf32, roundOf16, roundOf8, roundOf4, roundOf2, podium []Team,
+) string {
+	var b strings.Builder
+
+	sorted := append([]MatchResult(nil), matchResults...)
+	sortMatchResults(sorted)
+	for _, result := range sorted {
+		fmt.Fprintf(&b, "%d %d %d\n", result.Match.Id, result.Team1Score, result.Team2Score)
+	}
+
+	teamSections := [][]Team{roundOf32, roundOf16, roundOf8, roundOf4, roundOf2, podium}
+	for _, teams := range teamSections {
+		b.WriteString(".\n")
+		for _, team := range teams {
+			b.WriteString(team.Abbr + "\n")
+		}
+	}
+
+	return b.String()
+}
+
+func sortMatchResults(results []MatchResult) {
+	for i := 1; i < len(results); i++ {
+		for j := i; j > 0 && results[j].Match.Id < results[j-1].Match.Id; j-- {
+			results[j], results[j-1] = results[j-1], results[j]
+		}
+	}
+}
+
+// TeamsByAbbr returns a lookup map of team abbreviations.
+func TeamsByAbbr() map[string]Team {
+	teamsByAbbr := make(map[string]Team, len(Teams))
+	for _, team := range Teams {
+		teamsByAbbr[team.Abbr] = team
+	}
+	return teamsByAbbr
+}
+
+func splitSections(file *os.File) ([][]string, error) {
 	var sections [][]string
 	var current []string
 
@@ -125,9 +188,12 @@ func splitSections(file *os.File) [][]string {
 		}
 		current = append(current, line)
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
 	sections = append(sections, current)
 
-	return sections
+	return sections, nil
 }
 
 func parseMatchResults(lines []string) ([]MatchResult, error) {

@@ -23,6 +23,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to load results: %v\n", err)
 		os.Exit(1)
 	}
+	if err := lib.EnsureParticipantsDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create participants directory: %v\n", err)
+		os.Exit(1)
+	}
+	if err := lib.LoadParticipants(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load participants: %v\n", err)
+		os.Exit(1)
+	}
 
 	cmd.Execute()
 }
