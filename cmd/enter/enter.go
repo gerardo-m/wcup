@@ -1,6 +1,5 @@
 /*
 Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-
 */
 package cmd
 
@@ -26,7 +25,6 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	rootCmd.AddCommand(enterCmd)
 
 	// Here you will define your flags and configuration settings.
 
@@ -37,4 +35,8 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// enterCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+func Command() *cobra.Command {
+	return enterCmd
 }

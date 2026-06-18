@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/gerardo-m/wcup/lib"
@@ -19,6 +20,7 @@ const (
 	phaseRound4
 	phaseRound2
 	phasePodium
+	phaseTopScorer
 	phaseDone
 )
 
@@ -28,8 +30,10 @@ type resultsEditor struct {
 	scoreField int
 	team1Input string
 	team2Input string
-	teamInput  string
-	errMsg     string
+	teamInput        string
+	topScorer        string
+	topScorerInput   string
+	errMsg           string
 
 	matchResults map[int]lib.MatchResult
 	roundOf32    []lib.Team
@@ -80,6 +84,7 @@ func newResultsEditor() resultsEditor {
 	m.roundOf4 = append([]lib.Team(nil), lib.RoundOf4...)
 	m.roundOf2 = append([]lib.Team(nil), lib.RoundOf2...)
 	m.podium = append([]lib.Team(nil), lib.Podium...)
+	m.topScorer = lib.TopScorer
 
 	m.reposition()
 	return m
@@ -91,6 +96,7 @@ func (m *resultsEditor) reposition() {
 	m.team1Input = ""
 	m.team2Input = ""
 	m.teamInput = ""
+	m.topScorerInput = ""
 	m.errMsg = ""
 }
 
@@ -120,6 +126,10 @@ func detectEditorProgress(m resultsEditor) (editorPhase, int) {
 		}
 	}
 
+	if strings.TrimSpace(m.topScorer) == "" {
+		return phaseTopScorer, 0
+	}
+
 	return phaseDone, 0
 }
 
@@ -146,6 +156,8 @@ func (m resultsEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			if len(msg.Runes) == 1 && msg.Runes[0] >= '0' && msg.Runes[0] <= '9' {
 				m.handleDigit(msg.Runes[0])
+			} else if m.phase == phaseTopScorer {
+				m.handleTopScorerRune(msg.Runes)
 			} else if m.phase != phaseMatches && m.phase != phaseDone {
 				m.handleTeamRune(msg.Runes)
 			}
@@ -194,6 +206,22 @@ func (m resultsEditor) handleEnter() (tea.Model, tea.Cmd) {
 	case phaseDone:
 		return m, tea.Quit
 
+	case phaseTopScorer:
+		name := strings.TrimSpace(m.topScorerInput)
+		if name == "" {
+			m.errMsg = "Ingresa el nombre del goleador"
+			return m, nil
+		}
+		m.topScorer = name
+		m.topScorerInput = ""
+		m.errMsg = ""
+		_ = m.syncToLib()
+		m.reposition()
+		if m.phase == phaseDone {
+			return m, tea.Quit
+		}
+		return m, nil
+
 	default:
 		abbr := strings.ToUpper(strings.TrimSpace(m.teamInput))
 		if abbr == "" {
@@ -240,6 +268,10 @@ func (m *resultsEditor) handleBackspace() {
 		}
 	case phaseDone:
 		return
+	case phaseTopScorer:
+		if len(m.topScorerInput) > 0 {
+			m.topScorerInput = m.topScorerInput[:len(m.topScorerInput)-1]
+		}
 	default:
 		if len(m.teamInput) > 0 {
 			m.teamInput = m.teamInput[:len(m.teamInput)-1]
@@ -260,6 +292,17 @@ func (m *resultsEditor) handleDigit(d rune) {
 		}
 	} else if len(m.team2Input) < 2 {
 		m.team2Input += digit
+	}
+	m.errMsg = ""
+}
+
+func (m *resultsEditor) handleTopScorerRune(runes []rune) {
+	for _, r := range runes {
+		if unicode.IsLetter(r) || r == ' ' || r == '-' || r == '\'' {
+			if len(m.topScorerInput) < 40 {
+				m.topScorerInput += string(r)
+			}
+		}
 	}
 	m.errMsg = ""
 }
@@ -338,6 +381,8 @@ func (m resultsEditor) phaseTitle() string {
 		return fmt.Sprintf("FINAL (%d/2)", len(m.roundOf2))
 	case phasePodium:
 		return fmt.Sprintf("PODIO (%d/3)", len(m.podium))
+	case phaseTopScorer:
+		return "GOLEADOR"
 	default:
 		return "RESULTADOS COMPLETOS"
 	}
@@ -351,6 +396,7 @@ func (m resultsEditor) syncToLib() error {
 	lib.RoundOf4 = append([]lib.Team(nil), m.roundOf4...)
 	lib.RoundOf2 = append([]lib.Team(nil), m.roundOf2...)
 	lib.Podium = append([]lib.Team(nil), m.podium...)
+	lib.TopScorer = m.topScorer
 	return lib.SaveResults()
 }
 
@@ -382,6 +428,10 @@ func (m resultsEditor) View() string {
 		b.WriteString(m.renderMatchView())
 		b.WriteString("\n\n")
 		b.WriteString(styleDim("Escribe el marcador · Enter avanza · ← retrocede · Esc guarda y sale"))
+	} else if m.phase == phaseTopScorer {
+		b.WriteString(m.renderTopScorerView())
+		b.WriteString("\n\n")
+		b.WriteString(styleDim("Escribe el nombre del goleador · Enter guarda · Esc guarda y sale"))
 	} else {
 		b.WriteString(m.renderTeamView())
 		b.WriteString("\n\n")
@@ -446,6 +496,14 @@ func (m resultsEditor) renderTeamView() string {
 	}
 
 	return b.String()
+}
+
+func (m resultsEditor) renderTopScorerView() string {
+	name := m.topScorerInput
+	if name == "" {
+		name = "_"
+	}
+	return fmt.Sprintf("Nombre: %s", styleActive(name))
 }
 
 func groupForMatch(match lib.Match) string {

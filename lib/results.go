@@ -22,7 +22,10 @@ var (
 	RoundOf4     []Team
 	RoundOf2     []Team
 	Podium       []Team
+	TopScorer    string
 )
+
+const resultsSectionCount = 8
 
 func resultsPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -33,7 +36,7 @@ func resultsPath() (string, error) {
 }
 
 func emptyResultsContent() string {
-	return strings.Repeat(".\n", 6)
+	return strings.Repeat(".\n", resultsSectionCount-1)
 }
 
 // EnsureResultsFile creates ~/.wcup/ and an empty results file if needed.
@@ -76,10 +79,10 @@ func LoadResults() error {
 	if len(sections) < 1 {
 		return fmt.Errorf("results file: expected at least 1 section")
 	}
-	if len(sections) > 7 {
-		return fmt.Errorf("results file: expected at most 7 sections, got %d", len(sections))
+	if len(sections) > resultsSectionCount {
+		return fmt.Errorf("results file: expected at most %d sections, got %d", resultsSectionCount, len(sections))
 	}
-	for len(sections) < 7 {
+	for len(sections) < resultsSectionCount {
 		sections = append(sections, nil)
 	}
 
@@ -108,6 +111,12 @@ func LoadResults() error {
 		*teamSections[i] = teams
 	}
 
+	topScorer, err := parseTopScorer(sections[7])
+	if err != nil {
+		return fmt.Errorf("section 8: %w", err)
+	}
+	TopScorer = topScorer
+
 	return nil
 }
 
@@ -126,14 +135,39 @@ func SaveResults() error {
 		RoundOf4,
 		RoundOf2,
 		Podium,
+		TopScorer,
 	)
 
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+// ResetResults clears in-memory results and writes an empty results file.
+func ResetResults() error {
+	MatchResults = nil
+	RoundOf32 = nil
+	RoundOf16 = nil
+	RoundOf8 = nil
+	RoundOf4 = nil
+	RoundOf2 = nil
+	Podium = nil
+	TopScorer = ""
+
+	path, err := resultsPath()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, []byte(emptyResultsContent()), 0o644)
+}
+
 func formatResultsFile(
 	matchResults []MatchResult,
 	roundOf32, roundOf16, roundOf8, roundOf4, roundOf2, podium []Team,
+	topScorer string,
 ) string {
 	var b strings.Builder
 
@@ -151,7 +185,22 @@ func formatResultsFile(
 		}
 	}
 
+	b.WriteString(".\n")
+	if topScorer != "" {
+		b.WriteString(topScorer + "\n")
+	}
+
 	return b.String()
+}
+
+func parseTopScorer(lines []string) (string, error) {
+	if len(lines) == 0 {
+		return "", nil
+	}
+	if len(lines) > 1 {
+		return "", fmt.Errorf("expected at most 1 top scorer, got %d", len(lines))
+	}
+	return strings.TrimSpace(lines[0]), nil
 }
 
 func sortMatchResults(results []MatchResult) {

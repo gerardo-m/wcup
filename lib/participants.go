@@ -122,10 +122,10 @@ func parsePredictionSections(sections [][]string, label string) (*Prediction, er
 	if len(sections) < 1 {
 		return nil, fmt.Errorf("%s: expected at least 1 section", label)
 	}
-	if len(sections) > 7 {
-		return nil, fmt.Errorf("%s: expected at most 7 sections, got %d", label, len(sections))
+	if len(sections) > resultsSectionCount {
+		return nil, fmt.Errorf("%s: expected at most %d sections, got %d", label, resultsSectionCount, len(sections))
 	}
-	for len(sections) < 7 {
+	for len(sections) < resultsSectionCount {
 		sections = append(sections, nil)
 	}
 
@@ -161,5 +161,73 @@ func parsePredictionSections(sections [][]string, label string) (*Prediction, er
 		*teamSections[i] = teams
 	}
 
+	topScorer, err := parseTopScorer(sections[7])
+	if err != nil {
+		return nil, fmt.Errorf("%s section 8: %w", label, err)
+	}
+	prediction.TopScorer = topScorer
+
 	return prediction, nil
+}
+
+// ResetParticipant clears a single participant prediction file.
+func ResetParticipant(name string) error {
+	dir, err := participantsDir()
+	if err != nil {
+		return err
+	}
+
+	path := filepath.Join(dir, name)
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("participant %q not found", name)
+		}
+		return err
+	}
+
+	if err := os.WriteFile(path, []byte(emptyResultsContent()), 0o644); err != nil {
+		return err
+	}
+
+	clearParticipantInMemory(name)
+	return nil
+}
+
+// ResetAllParticipants clears every participant prediction file.
+func ResetAllParticipants() error {
+	dir, err := participantsDir()
+	if err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			Participants = nil
+			return nil
+		}
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		if err := os.WriteFile(path, []byte(emptyResultsContent()), 0o644); err != nil {
+			return err
+		}
+	}
+
+	Participants = nil
+	return nil
+}
+
+func clearParticipantInMemory(name string) {
+	for i, participant := range Participants {
+		if participant.Name == name {
+			Participants[i].Prediction = &Prediction{}
+			return
+		}
+	}
 }
