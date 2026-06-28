@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/fang"
 	enter "github.com/gerardo-m/wcup/cmd/enter"
+	show "github.com/gerardo-m/wcup/cmd/show"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +39,7 @@ func Execute() {
 
 func init() {
 	rootCmd.AddCommand(enter.Command())
+	rootCmd.AddCommand(show.Command())
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.

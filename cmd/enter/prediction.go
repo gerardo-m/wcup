@@ -6,35 +6,31 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
 
+var predictionParticipant string
+
 // predictionCmd represents the prediction command
 var predictionCmd = &cobra.Command{
 	Use:   "prediction",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Enter participant predictions interactively",
+	Long:  `Interactive editor for a participant's World Cup predictions.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("prediction called")
+		if predictionParticipant == "" {
+			fmt.Fprintln(os.Stderr, "usage: wcup enter prediction -p <participant>")
+			os.Exit(1)
+		}
+		if err := runPredictionEditor(predictionParticipant); err != nil {
+			fmt.Fprintf(os.Stderr, "prediction editor failed: %v\n", err)
+			os.Exit(1)
+		}
 	},
 }
 
 func init() {
 	enterCmd.AddCommand(predictionCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// predictionCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// predictionCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	predictionCmd.Flags().StringVarP(&predictionParticipant, "participant", "p", "", "Participant name")
 }

@@ -25,7 +25,8 @@ const (
 )
 
 type resultsEditor struct {
-	phase      editorPhase
+	participantName string
+	phase           editorPhase
 	matchIndex int
 	scoreField int
 	team1Input string
@@ -63,7 +64,18 @@ func styleError(s string) string   { return ansiRed + s + ansiReset }
 func styleTitle(s string) string   { return ansiBold + ansiPink + s + ansiReset }
 
 func runResultsEditor() error {
-	m := newResultsEditor()
+	return runEditor(newResultsEditor())
+}
+
+func runPredictionEditor(participant string) error {
+	m, err := newPredictionEditor(participant)
+	if err != nil {
+		return err
+	}
+	return runEditor(m)
+}
+
+func runEditor(m resultsEditor) error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
@@ -88,6 +100,33 @@ func newResultsEditor() resultsEditor {
 
 	m.reposition()
 	return m
+}
+
+func newPredictionEditor(participant string) (resultsEditor, error) {
+	prediction, err := lib.LoadParticipantPrediction(participant)
+	if err != nil {
+		return resultsEditor{}, err
+	}
+
+	m := resultsEditor{
+		participantName: participant,
+		teamsByAbbr:     lib.TeamsByAbbr(),
+		matchResults:    make(map[int]lib.MatchResult, len(prediction.Matches)),
+	}
+	for _, result := range prediction.Matches {
+		m.matchResults[result.Match.Id] = result
+	}
+
+	m.roundOf32 = append([]lib.Team(nil), prediction.RoundOf32...)
+	m.roundOf16 = append([]lib.Team(nil), prediction.RoundOf16...)
+	m.roundOf8 = append([]lib.Team(nil), prediction.RoundOf8...)
+	m.roundOf4 = append([]lib.Team(nil), prediction.RoundOf4...)
+	m.roundOf2 = append([]lib.Team(nil), prediction.RoundOf2...)
+	m.podium = append([]lib.Team(nil), prediction.Podium...)
+	m.topScorer = prediction.TopScorer
+
+	m.reposition()
+	return m, nil
 }
 
 func (m *resultsEditor) reposition() {
@@ -366,37 +405,61 @@ func (m resultsEditor) teamColumns() int {
 }
 
 func (m resultsEditor) phaseTitle() string {
+	var title string
 	switch m.phase {
 	case phaseMatches:
-		return fmt.Sprintf("PARTIDOS (%d/%d)", len(m.matchResults), len(lib.Matches))
+		title = fmt.Sprintf("PARTIDOS (%d/%d)", len(m.matchResults), len(lib.Matches))
 	case phaseRound32:
-		return fmt.Sprintf("RONDA DE 32 (%d/32)", len(m.roundOf32))
+		title = fmt.Sprintf("RONDA DE 32 (%d/32)", len(m.roundOf32))
 	case phaseRound16:
-		return fmt.Sprintf("OCTAVOS (%d/16)", len(m.roundOf16))
+		title = fmt.Sprintf("OCTAVOS (%d/16)", len(m.roundOf16))
 	case phaseRound8:
-		return fmt.Sprintf("CUARTOS (%d/8)", len(m.roundOf8))
+		title = fmt.Sprintf("CUARTOS (%d/8)", len(m.roundOf8))
 	case phaseRound4:
-		return fmt.Sprintf("SEMIFINALES (%d/4)", len(m.roundOf4))
+		title = fmt.Sprintf("SEMIFINALES (%d/4)", len(m.roundOf4))
 	case phaseRound2:
-		return fmt.Sprintf("FINAL (%d/2)", len(m.roundOf2))
+		title = fmt.Sprintf("FINAL (%d/2)", len(m.roundOf2))
 	case phasePodium:
-		return fmt.Sprintf("PODIO (%d/3)", len(m.podium))
+		title = fmt.Sprintf("PODIO (%d/3)", len(m.podium))
 	case phaseTopScorer:
-		return "GOLEADOR"
+		title = "GOLEADOR"
 	default:
+		if m.participantName != "" {
+			return "PREDICCIÓN COMPLETA"
+		}
 		return "RESULTADOS COMPLETOS"
 	}
+
+	if m.participantName != "" {
+		return fmt.Sprintf("%s · %s", m.participantName, title)
+	}
+	return title
 }
 
 func (m resultsEditor) syncToLib() error {
-	lib.MatchResults = m.matchResultsSlice()
-	lib.RoundOf32 = append([]lib.Team(nil), m.roundOf32...)
-	lib.RoundOf16 = append([]lib.Team(nil), m.roundOf16...)
-	lib.RoundOf8 = append([]lib.Team(nil), m.roundOf8...)
-	lib.RoundOf4 = append([]lib.Team(nil), m.roundOf4...)
-	lib.RoundOf2 = append([]lib.Team(nil), m.roundOf2...)
-	lib.Podium = append([]lib.Team(nil), m.podium...)
-	lib.TopScorer = m.topScorer
+	prediction := &lib.Prediction{
+		Matches:   m.matchResultsSlice(),
+		RoundOf32: append([]lib.Team(nil), m.roundOf32...),
+		RoundOf16: append([]lib.Team(nil), m.roundOf16...),
+		RoundOf8:  append([]lib.Team(nil), m.roundOf8...),
+		RoundOf4:  append([]lib.Team(nil), m.roundOf4...),
+		RoundOf2:  append([]lib.Team(nil), m.roundOf2...),
+		Podium:    append([]lib.Team(nil), m.podium...),
+		TopScorer: m.topScorer,
+	}
+
+	if m.participantName != "" {
+		return lib.SaveParticipantPrediction(m.participantName, prediction)
+	}
+
+	lib.MatchResults = prediction.Matches
+	lib.RoundOf32 = prediction.RoundOf32
+	lib.RoundOf16 = prediction.RoundOf16
+	lib.RoundOf8 = prediction.RoundOf8
+	lib.RoundOf4 = prediction.RoundOf4
+	lib.RoundOf2 = prediction.RoundOf2
+	lib.Podium = prediction.Podium
+	lib.TopScorer = prediction.TopScorer
 	return lib.SaveResults()
 }
 
@@ -415,8 +478,14 @@ func (m resultsEditor) matchResultsSlice() []lib.MatchResult {
 
 func (m resultsEditor) View() string {
 	if m.phase == phaseDone {
-		return styleTitle("RESULTADOS COMPLETOS") + "\n\n" +
-			styleDim("Todos los resultados han sido registrados.") + "\n\n" +
+		doneTitle := "RESULTADOS COMPLETOS"
+		doneMsg := "Todos los resultados han sido registrados."
+		if m.participantName != "" {
+			doneTitle = "PREDICCIÓN COMPLETA"
+			doneMsg = fmt.Sprintf("La predicción de %s ha sido registrada.", m.participantName)
+		}
+		return styleTitle(doneTitle) + "\n\n" +
+			styleDim(doneMsg) + "\n\n" +
 			styleDim("Presiona Enter o Esc para salir.")
 	}
 

@@ -170,6 +170,64 @@ func parsePredictionSections(sections [][]string, label string) (*Prediction, er
 	return prediction, nil
 }
 
+// LoadParticipantPrediction reads a single participant prediction file.
+func LoadParticipantPrediction(name string) (*Prediction, error) {
+	if err := EnsureParticipantFile(name); err != nil {
+		return nil, err
+	}
+
+	dir, err := participantsDir()
+	if err != nil {
+		return nil, err
+	}
+
+	return loadPredictionFromPath(filepath.Join(dir, name), name)
+}
+
+// SaveParticipantPrediction writes a participant prediction file.
+func SaveParticipantPrediction(name string, prediction *Prediction) error {
+	if err := EnsureParticipantsDir(); err != nil {
+		return err
+	}
+
+	dir, err := participantsDir()
+	if err != nil {
+		return err
+	}
+
+	content := formatResultsFile(
+		prediction.Matches,
+		prediction.RoundOf32,
+		prediction.RoundOf16,
+		prediction.RoundOf8,
+		prediction.RoundOf4,
+		prediction.RoundOf2,
+		prediction.Podium,
+		prediction.TopScorer,
+	)
+
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		return err
+	}
+
+	updateParticipantInMemory(name, prediction)
+	return nil
+}
+
+func updateParticipantInMemory(name string, prediction *Prediction) {
+	for i, participant := range Participants {
+		if participant.Name == name {
+			Participants[i].Prediction = prediction
+			return
+		}
+	}
+
+	Participants = append(Participants, Participant{
+		Name:       name,
+		Prediction: prediction,
+	})
+}
+
 // ResetParticipant clears a single participant prediction file.
 func ResetParticipant(name string) error {
 	dir, err := participantsDir()
