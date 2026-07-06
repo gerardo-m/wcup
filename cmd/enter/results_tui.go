@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gerardo-m/wcup/lib"
 )
 
@@ -27,14 +27,14 @@ const (
 type resultsEditor struct {
 	participantName string
 	phase           editorPhase
-	matchIndex int
-	scoreField int
-	team1Input string
-	team2Input string
-	teamInput        string
-	topScorer        string
-	topScorerInput   string
-	errMsg           string
+	matchIndex      int
+	scoreField      int
+	team1Input      string
+	team2Input      string
+	teamInput       string
+	topScorer       string
+	topScorerInput  string
+	errMsg          string
 
 	matchResults map[int]lib.MatchResult
 	roundOf32    []lib.Team
@@ -43,6 +43,16 @@ type resultsEditor struct {
 	roundOf4     []lib.Team
 	roundOf2     []lib.Team
 	podium       []lib.Team
+
+	groupQualifiers   []lib.GroupQualification
+	qualifierGroupIdx int
+	qualifierSlot     int
+	pendingEditGroup  int
+	pendingEditSlot   int
+	teamSearchInput   string
+	round32Reviewed   bool
+
+	knockoutCursor int
 
 	teamsByAbbr map[string]lib.Team
 }
@@ -57,11 +67,14 @@ const (
 	ansiGray    = "\033[90m"
 )
 
-func styleBold(s string) string    { return ansiBold + s + ansiReset }
-func styleDim(s string) string     { return ansiDim + s + ansiReset }
-func styleActive(s string) string  { return ansiReverse + ansiBold + s + ansiReset }
-func styleError(s string) string   { return ansiRed + s + ansiReset }
-func styleTitle(s string) string   { return ansiBold + ansiPink + s + ansiReset }
+func styleBold(s string) string   { return ansiBold + s + ansiReset }
+func styleDim(s string) string    { return ansiDim + s + ansiReset }
+func styleActive(s string) string { return ansiReverse + ansiBold + s + ansiReset }
+func styleActivePadded(s string, width int) string {
+	return styleActive(fmt.Sprintf("%-*s", width, s))
+}
+func styleError(s string) string  { return ansiRed + s + ansiReset }
+func styleTitle(s string) string  { return ansiBold + ansiPink + s + ansiReset }
 
 func runResultsEditor() error {
 	return runEditor(newResultsEditor())
@@ -97,6 +110,7 @@ func newResultsEditor() resultsEditor {
 	m.roundOf2 = append([]lib.Team(nil), lib.RoundOf2...)
 	m.podium = append([]lib.Team(nil), lib.Podium...)
 	m.topScorer = lib.TopScorer
+	m.round32Reviewed = len(m.roundOf32) == 32
 
 	m.reposition()
 	return m
@@ -124,6 +138,7 @@ func newPredictionEditor(participant string) (resultsEditor, error) {
 	m.roundOf2 = append([]lib.Team(nil), prediction.RoundOf2...)
 	m.podium = append([]lib.Team(nil), prediction.Podium...)
 	m.topScorer = prediction.TopScorer
+	m.round32Reviewed = len(m.roundOf32) == 32
 
 	m.reposition()
 	return m, nil
@@ -136,7 +151,25 @@ func (m *resultsEditor) reposition() {
 	m.team2Input = ""
 	m.teamInput = ""
 	m.topScorerInput = ""
+	m.teamSearchInput = ""
+	m.knockoutCursor = 0
 	m.errMsg = ""
+
+	if m.phase == phaseRound32 && !m.round32Reviewed {
+		m.ensureGroupQualifiers()
+		m.pendingEditGroup = m.qualifierGroupIdx
+		m.pendingEditSlot = m.qualifierSlot
+	}
+}
+
+func (m *resultsEditor) ensureGroupQualifiers() {
+	computed := lib.ComputeGroupQualifications(m.matchResults)
+	if len(m.roundOf32) == 32 {
+		m.groupQualifiers = lib.ApplyRoundOf32ToQualifications(computed, m.roundOf32)
+	} else {
+		m.groupQualifiers = computed
+		m.roundOf32 = lib.RoundOf32FromQualifications(computed)
+	}
 }
 
 func detectEditorProgress(m resultsEditor) (editorPhase, int) {
@@ -146,12 +179,15 @@ func detectEditorProgress(m resultsEditor) (editorPhase, int) {
 		}
 	}
 
+	if !m.round32Reviewed || len(m.roundOf32) < 32 {
+		return phaseRound32, 0
+	}
+
 	sections := []struct {
 		teams []lib.Team
 		max   int
 		phase editorPhase
 	}{
-		{m.roundOf32, 32, phaseRound32},
 		{m.roundOf16, 16, phaseRound16},
 		{m.roundOf8, 8, phaseRound8},
 		{m.roundOf4, 4, phaseRound4},
@@ -189,6 +225,50 @@ func (m resultsEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.phase == phaseMatches && m.scoreField == 1 {
 				m.scoreField = 0
 				m.errMsg = ""
+			} else if m.phase == phaseRound32 && m.qualifierSlot > 0 {
+				m.qualifierSlot--
+				m.pendingEditSlot = m.qualifierSlot
+				m.teamSearchInput = ""
+				m.errMsg = ""
+			} else if m.isKnockoutSelectPhase() {
+				m.moveKnockoutCursor(-1)
+				m.teamSearchInput = ""
+			}
+		case "right":
+			if m.phase == phaseRound32 && m.qualifierSlot < 2 {
+				m.qualifierSlot++
+				m.pendingEditSlot = m.qualifierSlot
+				m.teamSearchInput = ""
+				m.errMsg = ""
+			} else if m.isKnockoutSelectPhase() {
+				m.moveKnockoutCursor(1)
+				m.teamSearchInput = ""
+			}
+		case "up":
+			if m.phase == phaseRound32 && m.qualifierGroupIdx > 0 {
+				m.qualifierGroupIdx--
+				m.pendingEditGroup = m.qualifierGroupIdx
+				m.teamSearchInput = ""
+				m.errMsg = ""
+			} else if m.isKnockoutSelectPhase() {
+				m.moveKnockoutCursor(-m.knockoutColumns())
+				m.teamSearchInput = ""
+			}
+		case "down":
+			if m.phase == phaseRound32 && m.qualifierGroupIdx < len(m.groupQualifiers)-1 {
+				m.qualifierGroupIdx++
+				m.pendingEditGroup = m.qualifierGroupIdx
+				m.teamSearchInput = ""
+				m.errMsg = ""
+			} else if m.isKnockoutSelectPhase() {
+				m.moveKnockoutCursor(m.knockoutColumns())
+				m.teamSearchInput = ""
+			}
+		case " ":
+			if m.phase == phaseRound32 && m.qualifierSlot == 2 {
+				m.toggleThirdQualified()
+			} else if m.isKnockoutSelectPhase() {
+				m.toggleKnockoutSelection()
 			}
 		case "backspace":
 			m.handleBackspace()
@@ -197,7 +277,9 @@ func (m resultsEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.handleDigit(msg.Runes[0])
 			} else if m.phase == phaseTopScorer {
 				m.handleTopScorerRune(msg.Runes)
-			} else if m.phase != phaseMatches && m.phase != phaseDone {
+			} else if m.phase == phaseRound32 || m.isKnockoutSelectPhase() {
+				m.handleTeamSearchRune(msg.Runes)
+			} else if m.phase == phasePodium {
 				m.handleTeamRune(msg.Runes)
 			}
 		}
@@ -235,6 +317,7 @@ func (m resultsEditor) handleEnter() (tea.Model, tea.Cmd) {
 			Team1Score: team1Score,
 			Team2Score: team2Score,
 		}
+		m.round32Reviewed = false
 		_ = m.syncToLib()
 		m.reposition()
 		if m.phase == phaseDone {
@@ -260,6 +343,19 @@ func (m resultsEditor) handleEnter() (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, nil
+
+	case phaseRound32:
+		return m.handleRound32Enter()
+
+	case phaseRound16, phaseRound8, phaseRound4, phaseRound2:
+		if strings.TrimSpace(m.teamSearchInput) != "" {
+			m.teamSearchInput = ""
+			m.errMsg = ""
+			if len(*m.currentTeams()) != m.maxTeams() {
+				return m, nil
+			}
+		}
+		return m.handleKnockoutEnter()
 
 	default:
 		abbr := strings.ToUpper(strings.TrimSpace(m.teamInput))
@@ -311,6 +407,16 @@ func (m *resultsEditor) handleBackspace() {
 		if len(m.topScorerInput) > 0 {
 			m.topScorerInput = m.topScorerInput[:len(m.topScorerInput)-1]
 		}
+	case phaseRound32:
+		if len(m.teamSearchInput) > 0 {
+			m.teamSearchInput = m.teamSearchInput[:len(m.teamSearchInput)-1]
+			m.updateCursorFromSearch()
+		}
+	case phaseRound16, phaseRound8, phaseRound4, phaseRound2:
+		if len(m.teamSearchInput) > 0 {
+			m.teamSearchInput = m.teamSearchInput[:len(m.teamSearchInput)-1]
+			m.updateCursorFromSearch()
+		}
 	default:
 		if len(m.teamInput) > 0 {
 			m.teamInput = m.teamInput[:len(m.teamInput)-1]
@@ -344,6 +450,146 @@ func (m *resultsEditor) handleTopScorerRune(runes []rune) {
 		}
 	}
 	m.errMsg = ""
+}
+
+func (m *resultsEditor) handleTeamSearchRune(runes []rune) {
+	for _, r := range runes {
+		if unicode.IsLetter(r) || r == ' ' {
+			if len(m.teamSearchInput) < 40 {
+				m.teamSearchInput += string(r)
+			}
+		}
+	}
+	m.updateCursorFromSearch()
+	m.errMsg = ""
+}
+
+func (m *resultsEditor) updateCursorFromSearch() {
+	query := strings.TrimSpace(m.teamSearchInput)
+	if query == "" {
+		return
+	}
+
+	switch {
+	case m.phase == phaseRound32:
+		if team, ok := lib.FindTeamByQuery(query, m.round32SearchPool()); ok {
+			m.moveCursorToRound32Team(team)
+		}
+	case m.isKnockoutSelectPhase():
+		if team, ok := lib.FindTeamByQuery(query, m.previousRoundTeams()); ok {
+			m.moveKnockoutCursorToTeam(team)
+		}
+	}
+}
+
+func (m resultsEditor) round32SearchPool() []lib.Team {
+	teams := make([]lib.Team, 0, len(m.groupQualifiers)*3)
+	for _, qualification := range m.groupQualifiers {
+		teams = append(teams, qualification.First, qualification.Second, qualification.Third)
+	}
+	return teams
+}
+
+func (m *resultsEditor) moveCursorToRound32Team(team lib.Team) {
+	for groupIdx, qualification := range m.groupQualifiers {
+		switch team.Abbr {
+		case qualification.First.Abbr:
+			m.qualifierGroupIdx = groupIdx
+			m.qualifierSlot = 0
+			return
+		case qualification.Second.Abbr:
+			m.qualifierGroupIdx = groupIdx
+			m.qualifierSlot = 1
+			return
+		case qualification.Third.Abbr:
+			m.qualifierGroupIdx = groupIdx
+			m.qualifierSlot = 2
+			return
+		}
+	}
+}
+
+func (m *resultsEditor) moveKnockoutCursorToTeam(team lib.Team) {
+	for i, candidate := range m.previousRoundTeams() {
+		if candidate.Abbr == team.Abbr {
+			m.knockoutCursor = i
+			return
+		}
+	}
+}
+
+func (m resultsEditor) handleRound32Enter() (tea.Model, tea.Cmd) {
+	if strings.TrimSpace(m.teamSearchInput) != "" {
+		group := lib.Groups[m.pendingEditGroup]
+		team, ok := lib.FindTeamByQuery(m.teamSearchInput, group.Teams)
+		if !ok {
+			m.errMsg = fmt.Sprintf("Equipo desconocido: %s", strings.TrimSpace(m.teamSearchInput))
+			return m, nil
+		}
+
+		qualification := &m.groupQualifiers[m.pendingEditGroup]
+		switch m.pendingEditSlot {
+		case 0:
+			qualification.First = team
+		case 1:
+			qualification.Second = team
+		case 2:
+			qualification.Third = team
+		}
+
+		m.teamSearchInput = ""
+		m.errMsg = ""
+		m.moveCursorToRound32Team(team)
+		m.roundOf32 = lib.RoundOf32FromQualifications(m.groupQualifiers)
+		_ = m.syncToLib()
+		return m, nil
+	}
+
+	if m.countQualifiedThirds() != 8 {
+		m.errMsg = "Deben clasificar exactamente 8 terceros"
+		return m, nil
+	}
+
+	m.roundOf32 = lib.RoundOf32FromQualifications(m.groupQualifiers)
+	m.round32Reviewed = true
+	m.errMsg = ""
+	_ = m.syncToLib()
+	m.reposition()
+	if m.phase == phaseDone {
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m *resultsEditor) toggleThirdQualified() {
+	if m.qualifierSlot != 2 {
+		return
+	}
+
+	qualification := &m.groupQualifiers[m.qualifierGroupIdx]
+	if qualification.ThirdQualified {
+		qualification.ThirdQualified = false
+	} else if m.countQualifiedThirds() >= 8 {
+		m.errMsg = "Ya hay 8 terceros clasificados"
+		return
+	} else {
+		qualification.ThirdQualified = true
+	}
+
+	m.roundOf32 = lib.RoundOf32FromQualifications(m.groupQualifiers)
+	m.teamSearchInput = ""
+	m.errMsg = ""
+	_ = m.syncToLib()
+}
+
+func (m resultsEditor) countQualifiedThirds() int {
+	count := 0
+	for _, qualification := range m.groupQualifiers {
+		if qualification.ThirdQualified {
+			count++
+		}
+	}
+	return count
 }
 
 func (m *resultsEditor) handleTeamRune(runes []rune) {
@@ -501,6 +747,14 @@ func (m resultsEditor) View() string {
 		b.WriteString(m.renderTopScorerView())
 		b.WriteString("\n\n")
 		b.WriteString(styleDim("Escribe el nombre del goleador · Enter guarda · Esc guarda y sale"))
+	} else if m.phase == phaseRound32 {
+		b.WriteString(m.renderRound32View())
+		b.WriteString("\n\n")
+		b.WriteString(styleDim("↑↓←→ navegar · Escribe abreviatura o país · Espacio alterna 3° · Enter confirma · Esc guarda y sale"))
+	} else if m.isKnockoutSelectPhase() {
+		b.WriteString(m.renderKnockoutView())
+		b.WriteString("\n\n")
+		b.WriteString(styleDim("↑↓←→ navegar · Escribe abreviatura o país · Espacio alternar · Enter confirma · Esc guarda y sale"))
 	} else {
 		b.WriteString(m.renderTeamView())
 		b.WriteString("\n\n")
@@ -537,6 +791,174 @@ func (m resultsEditor) displayScore(input string) string {
 		return "_"
 	}
 	return input
+}
+
+func (m resultsEditor) renderRound32View() string {
+	var b strings.Builder
+
+	for i, qualification := range m.groupQualifiers {
+		b.WriteString(fmt.Sprintf("  %s ", qualification.Group))
+		b.WriteString(m.renderQualifierCell(i, 0, "1°", qualification.First.Abbr))
+		b.WriteString("  ")
+		b.WriteString(m.renderQualifierCell(i, 1, "2°", qualification.Second.Abbr))
+
+		thirdLabel := "3°"
+		if qualification.ThirdQualified {
+			thirdLabel = "3°✓"
+		}
+		b.WriteString("  ")
+		b.WriteString(m.renderQualifierCell(i, 2, thirdLabel, qualification.Third.Abbr))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	search := m.teamSearchInput
+	if search == "" {
+		search = "_"
+	}
+	slotLabels := []string{"1°", "2°", "3°"}
+	b.WriteString(fmt.Sprintf("Grupo %s %s · Buscar: %s",
+		m.groupQualifiers[m.pendingEditGroup].Group,
+		slotLabels[m.pendingEditSlot],
+		search,
+	))
+	b.WriteString(styleDim(fmt.Sprintf("  (%d/8 mejores terceros)", m.countQualifiedThirds())))
+
+	return b.String()
+}
+
+func (m resultsEditor) renderQualifierCell(groupIdx, slot int, label, abbr string) string {
+	cell := fmt.Sprintf("%s %s", label, abbr)
+	if groupIdx == m.qualifierGroupIdx && slot == m.qualifierSlot {
+		return styleActive(cell)
+	}
+	return cell
+}
+
+func (m resultsEditor) isKnockoutSelectPhase() bool {
+	return m.phase >= phaseRound16 && m.phase <= phaseRound2
+}
+
+func (m resultsEditor) previousRoundTeams() []lib.Team {
+	switch m.phase {
+	case phaseRound16:
+		return m.roundOf32
+	case phaseRound8:
+		return m.roundOf16
+	case phaseRound4:
+		return m.roundOf8
+	case phaseRound2:
+		return m.roundOf4
+	default:
+		return nil
+	}
+}
+
+func (m resultsEditor) knockoutColumns() int {
+	switch m.phase {
+	case phaseRound16, phaseRound8:
+		return 4
+	default:
+		return 2
+	}
+}
+
+func (m *resultsEditor) moveKnockoutCursor(delta int) {
+	pool := m.previousRoundTeams()
+	next := m.knockoutCursor + delta
+	if next >= 0 && next < len(pool) {
+		m.knockoutCursor = next
+		m.errMsg = ""
+	}
+}
+
+func (m *resultsEditor) toggleKnockoutSelection() {
+	pool := m.previousRoundTeams()
+	if m.knockoutCursor >= len(pool) {
+		return
+	}
+
+	team := pool[m.knockoutCursor]
+	current := m.currentTeams()
+
+	for i, existing := range *current {
+		if existing.Abbr == team.Abbr {
+			*current = append((*current)[:i], (*current)[i+1:]...)
+			m.teamSearchInput = ""
+			m.errMsg = ""
+			_ = m.syncToLib()
+			return
+		}
+	}
+
+	if len(*current) >= m.maxTeams() {
+		m.errMsg = fmt.Sprintf("Ya hay %d equipos seleccionados", m.maxTeams())
+		return
+	}
+
+	*current = append(*current, team)
+	m.teamSearchInput = ""
+	m.errMsg = ""
+	_ = m.syncToLib()
+}
+
+func (m resultsEditor) handleKnockoutEnter() (tea.Model, tea.Cmd) {
+	current := m.currentTeams()
+	if len(*current) != m.maxTeams() {
+		m.errMsg = fmt.Sprintf("Selecciona exactamente %d equipos", m.maxTeams())
+		return m, nil
+	}
+
+	m.errMsg = ""
+	_ = m.syncToLib()
+	m.reposition()
+	if m.phase == phaseDone {
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m resultsEditor) renderKnockoutView() string {
+	pool := m.previousRoundTeams()
+	selected := make(map[string]struct{}, len(pool))
+	for _, team := range *m.currentTeams() {
+		selected[team.Abbr] = struct{}{}
+	}
+
+	cols := m.knockoutColumns()
+	var b strings.Builder
+
+	b.WriteString(styleDim("Equipos de la ronda anterior:"))
+	b.WriteString("\n\n")
+
+	for i, team := range pool {
+		cell := team.Abbr
+		if _, ok := selected[team.Abbr]; ok {
+			cell += "✓"
+		}
+		if i == m.knockoutCursor {
+			fmt.Fprintf(&b, "%s", styleActivePadded(cell, 6))
+		} else {
+			fmt.Fprintf(&b, "%-6s", cell)
+		}
+		if (i+1)%cols == 0 {
+			b.WriteString("\n")
+		}
+	}
+	if len(pool)%cols != 0 {
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	search := m.teamSearchInput
+	if search == "" {
+		search = "_"
+	}
+	b.WriteString(fmt.Sprintf("Buscar: %s", search))
+	b.WriteString("\n")
+	b.WriteString(styleDim(fmt.Sprintf("Seleccionados: %d/%d", len(*m.currentTeams()), m.maxTeams())))
+
+	return b.String()
 }
 
 func (m resultsEditor) renderTeamView() string {

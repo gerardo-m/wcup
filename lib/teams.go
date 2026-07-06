@@ -1,5 +1,7 @@
 package lib
 
+import "strings"
+
 // Team represents a national team in the 2026 FIFA World Cup.
 type Team struct {
 	Name string
@@ -136,3 +138,40 @@ var (
 		GroupI, GroupJ, GroupK, GroupL,
 	}
 )
+
+// FindTeamByQuery finds the best matching team by abbreviation or name within candidates.
+func FindTeamByQuery(query string, candidates []Team) (Team, bool) {
+	q := strings.TrimSpace(strings.ToLower(query))
+	if q == "" {
+		return Team{}, false
+	}
+
+	for _, team := range candidates {
+		if strings.ToLower(team.Abbr) == q {
+			return team, true
+		}
+	}
+
+	var abbrMatches []Team
+	for _, team := range candidates {
+		if strings.HasPrefix(strings.ToLower(team.Abbr), q) {
+			abbrMatches = append(abbrMatches, team)
+		}
+	}
+	if len(abbrMatches) > 0 {
+		return abbrMatches[0], true
+	}
+
+	var nameMatches []Team
+	for _, team := range candidates {
+		name := strings.ToLower(team.Name)
+		if strings.HasPrefix(name, q) || strings.Contains(name, q) {
+			nameMatches = append(nameMatches, team)
+		}
+	}
+	if len(nameMatches) > 0 {
+		return nameMatches[0], true
+	}
+
+	return Team{}, false
+}
