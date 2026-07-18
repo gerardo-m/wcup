@@ -1,6 +1,9 @@
 package lib
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 type Match struct {
 	Id    int
@@ -36,6 +39,9 @@ var MatchesByGroup map[string][]Match
 
 // MatchesByTeam indexes group stage matches by team abbreviation (e.g. "MEX", "USA").
 var MatchesByTeam map[string][]Match
+
+// MatchesGroupOrder lists group stage matches ordered by group (A–L), then by match ID.
+var MatchesGroupOrder []Match
 
 // scheduleDate builds a match date using the official local kick-off time.
 func scheduleDate(year int, month time.Month, day, hour, min int) time.Time {
@@ -138,5 +144,14 @@ func buildMatchIndexes() {
 
 		MatchesByTeam[match.Team1.Abbr] = append(MatchesByTeam[match.Team1.Abbr], match)
 		MatchesByTeam[match.Team2.Abbr] = append(MatchesByTeam[match.Team2.Abbr], match)
+	}
+
+	MatchesGroupOrder = make([]Match, 0, len(Matches))
+	for _, group := range Groups {
+		groupMatches := append([]Match(nil), MatchesByGroup[group.Name]...)
+		sort.Slice(groupMatches, func(i, j int) bool {
+			return groupMatches[i].Id < groupMatches[j].Id
+		})
+		MatchesGroupOrder = append(MatchesGroupOrder, groupMatches...)
 	}
 }

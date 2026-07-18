@@ -66,12 +66,34 @@ func TestRoundOf32FromQualificationsCountsThirds(t *testing.T) {
 			First:          Team{Abbr: "A1"},
 			Second:         Team{Abbr: "A2"},
 			Third:          Team{Abbr: "A3"},
+			Fourth:         Team{Abbr: "A4"},
 			ThirdQualified: i < 8,
+			ExtraIsFourth:  i == 0,
 		}
 	}
 
 	roundOf32 := RoundOf32FromQualifications(qualifications)
 	if len(roundOf32) != 32 {
 		t.Fatalf("expected 32 teams, got %d", len(roundOf32))
+	}
+	if roundOf32[2].Abbr != "A4" {
+		t.Fatalf("expected first group's extra qualifier to be A4, got %s", roundOf32[2].Abbr)
+	}
+}
+
+func TestApplyRoundOf32ToQualificationsFourth(t *testing.T) {
+	qualifications := []GroupQualification{{
+		Group:  "A",
+		First:  Team{Abbr: "A1"},
+		Second: Team{Abbr: "A2"},
+		Third:  Team{Abbr: "A3"},
+		Fourth: Team{Abbr: "A4"},
+	}}
+
+	restored := ApplyRoundOf32ToQualifications(qualifications, []Team{
+		{Abbr: "A1"}, {Abbr: "A2"}, {Abbr: "A4"},
+	})
+	if !restored[0].ThirdQualified || !restored[0].ExtraIsFourth {
+		t.Fatal("expected fourth place to be restored as extra qualifier")
 	}
 }

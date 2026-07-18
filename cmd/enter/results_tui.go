@@ -173,7 +173,7 @@ func (m *resultsEditor) ensureGroupQualifiers() {
 }
 
 func detectEditorProgress(m resultsEditor) (editorPhase, int) {
-	for i, match := range lib.Matches {
+	for i, match := range lib.MatchesGroupOrder {
 		if _, ok := m.matchResults[match.Id]; !ok {
 			return phaseMatches, i
 		}
@@ -235,7 +235,7 @@ func (m resultsEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.teamSearchInput = ""
 			}
 		case "right":
-			if m.phase == phaseRound32 && m.qualifierSlot < 2 {
+			if m.phase == phaseRound32 && m.qualifierSlot < 3 {
 				m.qualifierSlot++
 				m.pendingEditSlot = m.qualifierSlot
 				m.teamSearchInput = ""
@@ -265,8 +265,8 @@ func (m resultsEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.teamSearchInput = ""
 			}
 		case " ":
-			if m.phase == phaseRound32 && m.qualifierSlot == 2 {
-				m.toggleThirdQualified()
+			if m.phase == phaseRound32 && (m.qualifierSlot == 2 || m.qualifierSlot == 3) {
+				m.toggleExtraQualified()
 			} else if m.isKnockoutSelectPhase() {
 				m.toggleKnockoutSelection()
 			}
@@ -311,7 +311,7 @@ func (m resultsEditor) handleEnter() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		match := lib.Matches[m.matchIndex]
+		match := lib.MatchesGroupOrder[m.matchIndex]
 		m.matchResults[match.Id] = lib.MatchResult{
 			Match:      match,
 			Team1Score: team1Score,
@@ -483,9 +483,9 @@ func (m *resultsEditor) updateCursorFromSearch() {
 }
 
 func (m resultsEditor) round32SearchPool() []lib.Team {
-	teams := make([]lib.Team, 0, len(m.groupQualifiers)*3)
+	teams := make([]lib.Team, 0, len(m.groupQualifiers)*4)
 	for _, qualification := range m.groupQualifiers {
-		teams = append(teams, qualification.First, qualification.Second, qualification.Third)
+		teams = append(teams, qualification.First, qualification.Second, qualification.Third, qualification.Fourth)
 	}
 	return teams
 }
@@ -504,6 +504,10 @@ func (m *resultsEditor) moveCursorToRound32Team(team lib.Team) {
 		case qualification.Third.Abbr:
 			m.qualifierGroupIdx = groupIdx
 			m.qualifierSlot = 2
+			return
+		case qualification.Fourth.Abbr:
+			m.qualifierGroupIdx = groupIdx
+			m.qualifierSlot = 3
 			return
 		}
 	}
@@ -535,6 +539,8 @@ func (m resultsEditor) handleRound32Enter() (tea.Model, tea.Cmd) {
 			qualification.Second = team
 		case 2:
 			qualification.Third = team
+		case 3:
+			qualification.Fourth = team
 		}
 
 		m.teamSearchInput = ""
@@ -561,19 +567,23 @@ func (m resultsEditor) handleRound32Enter() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *resultsEditor) toggleThirdQualified() {
-	if m.qualifierSlot != 2 {
+func (m *resultsEditor) toggleExtraQualified() {
+	if m.qualifierSlot != 2 && m.qualifierSlot != 3 {
 		return
 	}
 
 	qualification := &m.groupQualifiers[m.qualifierGroupIdx]
-	if qualification.ThirdQualified {
+	wantFourth := m.qualifierSlot == 3
+
+	if qualification.ThirdQualified && qualification.ExtraIsFourth == wantFourth {
 		qualification.ThirdQualified = false
-	} else if m.countQualifiedThirds() >= 8 {
+		qualification.ExtraIsFourth = false
+	} else if !qualification.ThirdQualified && m.countQualifiedThirds() >= 8 {
 		m.errMsg = "Ya hay 8 terceros clasificados"
 		return
 	} else {
 		qualification.ThirdQualified = true
+		qualification.ExtraIsFourth = wantFourth
 	}
 
 	m.roundOf32 = lib.RoundOf32FromQualifications(m.groupQualifiers)
@@ -654,7 +664,7 @@ func (m resultsEditor) phaseTitle() string {
 	var title string
 	switch m.phase {
 	case phaseMatches:
-		title = fmt.Sprintf("PARTIDOS (%d/%d)", len(m.matchResults), len(lib.Matches))
+		title = fmt.Sprintf("PARTIDOS (%d/%d)", len(m.matchResults), len(lib.MatchesGroupOrder))
 	case phaseRound32:
 		title = fmt.Sprintf("RONDA DE 32 (%d/32)", len(m.roundOf32))
 	case phaseRound16:
@@ -750,7 +760,7 @@ func (m resultsEditor) View() string {
 	} else if m.phase == phaseRound32 {
 		b.WriteString(m.renderRound32View())
 		b.WriteString("\n\n")
-		b.WriteString(styleDim("↑↓←→ navegar · Escribe abreviatura o país · Espacio alterna 3° · Enter confirma · Esc guarda y sale"))
+		b.WriteString(styleDim("↑↓←→ navegar · Escribe abreviatura o país · Espacio alterna 3°/4° · Enter confirma · Esc guarda y sale"))
 	} else if m.isKnockoutSelectPhase() {
 		b.WriteString(m.renderKnockoutView())
 		b.WriteString("\n\n")
@@ -770,7 +780,7 @@ func (m resultsEditor) View() string {
 }
 
 func (m resultsEditor) renderMatchView() string {
-	match := lib.Matches[m.matchIndex]
+	match := lib.MatchesGroupOrder[m.matchIndex]
 	team1Score := m.displayScore(m.team1Input)
 	team2Score := m.displayScore(m.team2Input)
 
@@ -803,11 +813,18 @@ func (m resultsEditor) renderRound32View() string {
 		b.WriteString(m.renderQualifierCell(i, 1, "2°", qualification.Second.Abbr))
 
 		thirdLabel := "3°"
-		if qualification.ThirdQualified {
+		if qualification.ThirdQualified && !qualification.ExtraIsFourth {
 			thirdLabel = "3°✓"
 		}
 		b.WriteString("  ")
 		b.WriteString(m.renderQualifierCell(i, 2, thirdLabel, qualification.Third.Abbr))
+
+		fourthLabel := "4°"
+		if qualification.ThirdQualified && qualification.ExtraIsFourth {
+			fourthLabel = "4°✓"
+		}
+		b.WriteString("  ")
+		b.WriteString(m.renderQualifierCell(i, 3, fourthLabel, qualification.Fourth.Abbr))
 		b.WriteString("\n")
 	}
 
@@ -816,7 +833,7 @@ func (m resultsEditor) renderRound32View() string {
 	if search == "" {
 		search = "_"
 	}
-	slotLabels := []string{"1°", "2°", "3°"}
+	slotLabels := []string{"1°", "2°", "3°", "4°"}
 	b.WriteString(fmt.Sprintf("Grupo %s %s · Buscar: %s",
 		m.groupQualifiers[m.pendingEditGroup].Group,
 		slotLabels[m.pendingEditSlot],

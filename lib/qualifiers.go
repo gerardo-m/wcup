@@ -2,14 +2,26 @@ package lib
 
 import "sort"
 
-// GroupQualification holds the group stage finishers and whether the 3rd place team qualifies.
+// GroupQualification holds the group stage finishers and whether an extra team qualifies.
 type GroupQualification struct {
 	Group          string
 	First          Team
 	Second         Team
 	Third          Team
 	Fourth         Team
-	ThirdQualified bool
+	ThirdQualified bool // group sends an extra team beyond 1st and 2nd
+	ExtraIsFourth  bool // when ThirdQualified, use Fourth instead of Third
+}
+
+// ExtraQualifier returns the third-place qualifier team for the group, if any.
+func (q GroupQualification) ExtraQualifier() (Team, bool) {
+	if !q.ThirdQualified {
+		return Team{}, false
+	}
+	if q.ExtraIsFourth {
+		return q.Fourth, true
+	}
+	return q.Third, true
 }
 
 // ComputeGroupQualifications derives group finishers and the 8 best third-placed teams.
@@ -50,14 +62,14 @@ func RoundOf32FromQualifications(qualifications []GroupQualification) []Team {
 	teams := make([]Team, 0, 32)
 	for _, qualification := range qualifications {
 		teams = append(teams, qualification.First, qualification.Second)
-		if qualification.ThirdQualified {
-			teams = append(teams, qualification.Third)
+		if extra, ok := qualification.ExtraQualifier(); ok {
+			teams = append(teams, extra)
 		}
 	}
 	return teams
 }
 
-// ApplyRoundOf32ToQualifications marks third-place qualifiers from a saved Round of 32 list.
+// ApplyRoundOf32ToQualifications restores extra qualifiers from a saved Round of 32 list.
 func ApplyRoundOf32ToQualifications(qualifications []GroupQualification, roundOf32 []Team) []GroupQualification {
 	qualified := make(map[string]struct{}, len(roundOf32))
 	for _, team := range roundOf32 {
@@ -65,7 +77,20 @@ func ApplyRoundOf32ToQualifications(qualifications []GroupQualification, roundOf
 	}
 
 	for i := range qualifications {
-		_, qualifications[i].ThirdQualified = qualified[qualifications[i].Third.Abbr]
+		q := &qualifications[i]
+		_, thirdIn := qualified[q.Third.Abbr]
+		_, fourthIn := qualified[q.Fourth.Abbr]
+		switch {
+		case fourthIn && !thirdIn:
+			q.ThirdQualified = true
+			q.ExtraIsFourth = true
+		case thirdIn:
+			q.ThirdQualified = true
+			q.ExtraIsFourth = false
+		default:
+			q.ThirdQualified = false
+			q.ExtraIsFourth = false
+		}
 	}
 
 	return qualifications
