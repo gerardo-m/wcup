@@ -13,9 +13,17 @@ import (
 
 // participantCmd represents the participant command
 var participantCmd = &cobra.Command{
-	Use:   "participant",
-	Short: "List registered participants",
-	Long:  `Display all participants with saved prediction files.`,
+	Use:   "participant [add <name>]",
+	Short: "List or add participants",
+	Long: `Display all participants with saved prediction files.
+
+To register a new participant, use:
+
+  wcup participant add <name>
+
+This creates an empty prediction file for that name.`,
+	Example: `  wcup participant
+  wcup participant add alice`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		if len(args) > 0 && args[0] == "add" {

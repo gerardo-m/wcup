@@ -14,7 +14,9 @@ import (
 var positionsCmd = &cobra.Command{
 	Use:   "positions",
 	Short: "Show World Cup group standings",
-	Long:  `Show group standings calculated from registered match results.`,
+	Long: `Calculate and print group standings from registered match
+results: points, wins, draws, losses, and goal difference for each team.`,
+	Example: `  wcup show positions`,
 	Run: func(cmd *cobra.Command, args []string) {
 		results := lib.MatchResultsByID()
 

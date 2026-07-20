@@ -14,8 +14,13 @@ import (
 var importCmd = &cobra.Command{
 	Use:   "import <file>",
 	Short: "Import wcup data from a compressed archive",
-	Long: `Import results and participant predictions from a gzip-compressed tar archive.
-This replaces all current data.`,
+	Long: `Import results and participant predictions from a gzip-compressed
+tar archive previously created with wcup export.
+
+This replaces all current data. You will be asked to confirm before
+any files are overwritten.`,
+	Example: `  wcup import backup.tar.gz
+  wcup import ~/Downloads/wcup-2026.tgz`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if !ReadConfirmation("¿Importar datos? Esto reemplazará todos los datos actuales") {

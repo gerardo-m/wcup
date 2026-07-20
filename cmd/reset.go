@@ -16,14 +16,19 @@ var allFlag bool
 
 // resetCmd represents the reset command
 var resetCmd = &cobra.Command{
-	Use:   "reset",
+	Use:   "reset <all|results|participant>",
 	Short: "Reset results or participants",
-	Long: `Reset results or participants. For example:
+	Long: `Clear registered World Cup data.
 
-wcup reset all
-wcup reset results
-wcup reset participant --name <name>
-wcup reset participant --all`,
+  all          Reset everything (not implemented yet)
+  results      Clear all match results and knockout classifications
+  participant  Remove one participant (--name) or every participant (--all)
+
+Destructive actions ask for confirmation before proceeding.`,
+	Example: `  wcup reset results
+  wcup reset participant --name alice
+  wcup reset participant --all
+  wcup reset all`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) != 1 {
 			fmt.Println("Usage: wcup reset <all|results|participant>")
@@ -46,7 +51,7 @@ wcup reset participant --all`,
 
 func init() {
 	rootCmd.AddCommand(resetCmd)
-	resetCmd.Flags().StringVarP(&nameFlag, "name", "n", "", "Participant name")
+	resetCmd.Flags().StringVarP(&nameFlag, "name", "n", "", "Participant name to reset")
 	resetCmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Reset all participants")
 }
 

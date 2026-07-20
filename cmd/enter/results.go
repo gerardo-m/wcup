@@ -15,7 +15,11 @@ import (
 var resultsCmd = &cobra.Command{
 	Use:   "results",
 	Short: "Enter World Cup results interactively",
-	Long:  `Interactive editor for match results and knockout classifications.`,
+	Long: `Open an interactive editor to record match scores and knockout
+classifications (round of 32 through the podium and top scorer).
+
+Changes are saved when you exit the editor.`,
+	Example: `  wcup enter results`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runResultsEditor(); err != nil {
 			fmt.Fprintf(os.Stderr, "results editor failed: %v\n", err)

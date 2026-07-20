@@ -17,7 +17,13 @@ var predictionParticipant string
 var predictionCmd = &cobra.Command{
 	Use:   "prediction",
 	Short: "Enter participant predictions interactively",
-	Long:  `Interactive editor for a participant's World Cup predictions.`,
+	Long: `Open an interactive editor for a participant's World Cup
+predictions: group stage scores, knockout picks, champion, and top scorer.
+
+The participant must already exist (see wcup participant add). Pass their
+name with --participant / -p.`,
+	Example: `  wcup enter prediction -p alice
+  wcup enter prediction --participant bob`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if predictionParticipant == "" {
 			fmt.Fprintln(os.Stderr, "usage: wcup enter prediction -p <participant>")
@@ -32,5 +38,5 @@ var predictionCmd = &cobra.Command{
 
 func init() {
 	enterCmd.AddCommand(predictionCmd)
-	predictionCmd.Flags().StringVarP(&predictionParticipant, "participant", "p", "", "Participant name")
+	predictionCmd.Flags().StringVarP(&predictionParticipant, "participant", "p", "", "Participant whose predictions to edit")
 }

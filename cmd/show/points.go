@@ -14,7 +14,12 @@ import (
 var pointsCmd = &cobra.Command{
 	Use:   "points",
 	Short: "Show participant points",
-	Long:  `Calculate and display points for all participants based on current results.`,
+	Long: `Calculate and display points for every participant by comparing
+their predictions against the current official results.
+
+The table includes totals and a breakdown by stage (matches, knockout
+rounds, top scorer, and champion).`,
+	Example: `  wcup show points`,
 	Run: func(cmd *cobra.Command, args []string) {
 		scores := lib.CalculateAllParticipantPoints()
 		if len(scores) == 0 {

@@ -14,8 +14,13 @@ import (
 var exportCmd = &cobra.Command{
 	Use:   "export <file>",
 	Short: "Export wcup data to a compressed archive",
-	Long:  `Export results and participant predictions to a gzip-compressed tar archive.`,
-	Args:  cobra.ExactArgs(1),
+	Long: `Export results and participant predictions to a gzip-compressed
+tar archive at the given path.
+
+The archive can later be restored with wcup import.`,
+	Example: `  wcup export backup.tar.gz
+  wcup export ~/Downloads/wcup-2026.tgz`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		dest := args[0]
 		if err := lib.ExportData(dest); err != nil {

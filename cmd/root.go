@@ -17,21 +17,21 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "wcup",
 	Short: "Calculator for World Cup predictions",
-	Long: `This is a calculator so we can register results and compare
-	them with our predictions before the World Cup starts.
-	`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Long: `Register official World Cup results, enter participant predictions,
+and compare them to see who is leading the pool.
+
+Use enter to record results or predictions interactively, show to display
+standings and points, and export/import to back up or share your data.`,
+	Example: `  wcup teams
+  wcup enter results
+  wcup enter prediction -p alice
+  wcup show points
+  wcup export backup.tar.gz`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	// err := rootCmd.Execute()
-	// if err != nil {
-	// 	os.Exit(1)
-	// }
 	if err := fang.Execute(context.Background(), rootCmd); err != nil {
 		os.Exit(1)
 	}
@@ -40,13 +40,4 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(enter.Command())
 	rootCmd.AddCommand(show.Command())
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.wcup.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

@@ -14,7 +14,9 @@ import (
 var resultsCmd = &cobra.Command{
 	Use:   "results",
 	Short: "Show World Cup results",
-	Long:  `Show the current World Cup results.`,
+	Long: `Print the currently registered World Cup results: group stage
+match scores, knockout classifications, podium, and top scorer.`,
+	Example: `  wcup show results`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Results:")
 		fmt.Println("Match Results:")

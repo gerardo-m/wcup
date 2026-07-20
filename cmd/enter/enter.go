@@ -4,37 +4,20 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
 // enterCmd represents the enter command
 var enterCmd = &cobra.Command{
 	Use:   "enter",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Enter results or predictions interactively",
+	Long: `Open an interactive editor to record World Cup match results
+or a participant's predictions.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("enter called")
-	},
-}
-
-func init() {
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// enterCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// enterCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+Use enter results for official outcomes, or enter prediction with a
+participant name to fill in their forecast.`,
+	Example: `  wcup enter results
+  wcup enter prediction -p alice`,
 }
 
 func Command() *cobra.Command {

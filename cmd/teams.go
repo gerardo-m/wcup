@@ -15,7 +15,9 @@ import (
 var teamsCmd = &cobra.Command{
 	Use:   "teams",
 	Short: "List World Cup groups and their teams",
-	Long:  `Display all group stage groups for the 2026 FIFA World Cup with their teams.`,
+	Long: `Display all group stage groups for the 2026 FIFA World Cup
+with each team's abbreviation and full name.`,
+	Example: `  wcup teams`,
 	Run: func(cmd *cobra.Command, args []string) {
 		for i, group := range lib.Groups {
 			fmt.Printf("Group %s\n", group.Name)
